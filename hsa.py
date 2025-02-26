@@ -265,7 +265,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Cargar el archivo Excel
-file_path = r'C:\Users\mateo\Downloads\HSA\PRUEBA HSA 26.xlsx'
+file_path = 'data\PRUEBA HSA 26.xlsx'
 try:
     sheet_names = get_sheet_names(file_path)
     
