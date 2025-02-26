@@ -313,7 +313,7 @@ try:
                         </div>
                     """.format(
                         format_date(row.get('FECHA DE REPARTO', 'No disponible')),
-                        row.get('REASIGNADO', 'No disponible'),
+                        row.get('EXPEDIENTES RE ASIGNADOS', 'No disponible'),
                         row.get('TEMA', 'No disponible'),
                         row.get('SOLICITANTE', 'No disponible'),
                         row.get('SEGUIMIENTO', 'No disponible'),
