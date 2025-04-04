@@ -168,6 +168,43 @@ def get_sheet_names(file_path):
 def load_sheet_data(file_path, sheet_name):
     return pd.read_excel(file_path, sheet_name=sheet_name)
 
+# Función para buscar en los datos
+def search_data(df, search_term, campo_busqueda):
+    """
+    Busca un término en la columna especificada del DataFrame.
+    Si campo_busqueda es 'TODOS', busca en todas las columnas.
+    Soporta búsqueda de términos múltiples separados por espacios.
+    """
+    if not search_term:
+        return df
+    
+    # Convertir todo a string para evitar problemas de tipo
+    for col in df.columns:
+        df[col] = df[col].astype(str)
+    
+    # Dividir la búsqueda en términos separados por espacios
+    search_terms = search_term.lower().split()
+    
+    if campo_busqueda == 'TODOS':
+        # Buscar todos los términos en todas las columnas
+        mask = pd.Series(True, index=df.index)
+        for term in search_terms:
+            term_mask = False
+            for column in df.columns:
+                term_mask |= df[column].str.lower().str.contains(term, regex=False, na=False)
+            mask &= term_mask
+        return df[mask]
+    else:
+        # Buscar solo en la columna especificada, todos los términos deben estar presentes
+        if campo_busqueda in df.columns:
+            mask = pd.Series(True, index=df.index)
+            for term in search_terms:
+                mask &= df[campo_busqueda].str.lower().str.contains(term, regex=False, na=False)
+            return df[mask]
+        else:
+            # Si la columna no existe en esta hoja, devolver DataFrame vacío
+            return pd.DataFrame()
+
 # Estilos CSS personalizados para mosaicos mejorados
 st.markdown("""
     <style>
@@ -253,6 +290,40 @@ st.markdown("""
             font-size: 14px;
             overflow-wrap: break-word;
         }
+        /* Estilos para el buscador */
+        .search-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            border-left: 5px solid #1f77b4;
+        }
+        .search-title {
+            color: #1f77b4;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .search-icon {
+            color: #1f77b4;
+            font-size: 24px;
+        }
+        .search-results {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        /* Badge para conteo de resultados */
+        .results-badge {
+            background: #1f77b4;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -269,6 +340,111 @@ file_path = 'PRUEBA HSA 26.xlsx'
 try:
     sheet_names = get_sheet_names(file_path)
     
+    # Contenedor para el buscador
+    st.markdown("""
+        <div class="search-container">
+            <h3 class="search-title">🔍 Buscador de Expedientes</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Crear el buscador con Streamlit
+    search_col1, search_col2 = st.columns([3, 1])
+    
+    with search_col1:
+        search_term = st.text_input("Ingrese término de búsqueda", 
+                                   placeholder="Ej: nombre, número de expediente, tema...")
+    
+    # Obtener una lista de todas las columnas posibles de todas las hojas
+    all_columns = set()
+    common_columns = None
+    dfs_by_sheet = {}
+    
+    # Cargar todas las hojas para obtener columnas
+    for sheet in sheet_names:
+        df = load_sheet_data(file_path, sheet)
+        df.columns = df.columns.str.strip()
+        dfs_by_sheet[sheet] = df
+        
+        # Actualizar conjunto de todas las columnas
+        sheet_columns = set(df.columns)
+        all_columns.update(sheet_columns)
+        
+        # Mantener un seguimiento de las columnas comunes
+        if common_columns is None:
+            common_columns = sheet_columns
+        else:
+            common_columns = common_columns.intersection(sheet_columns)
+    
+    # Opciones de búsqueda
+    search_options_col1, search_options_col2 = st.columns([3, 1])
+    
+    with search_options_col1:
+        # Ordenar y convertir el conjunto a lista para el selectbox
+        search_columns = ['TODOS'] + sorted(list(all_columns))
+        campo_busqueda = st.selectbox("Campo de búsqueda", options=search_columns)
+    
+    with search_options_col2:
+        search_button = st.button("🔍 Buscar", use_container_width=True)
+    
+    # Realizar búsqueda si se presiona el botón
+    if search_button and search_term:
+        # Inicializar DataFrame para almacenar todos los resultados
+        all_results = pd.DataFrame()
+        total_results = 0
+        
+        # Buscar en todas las hojas
+        for sheet_name, df in dfs_by_sheet.items():
+            # Comprobar si el campo de búsqueda existe en esta hoja
+            if campo_busqueda == 'TODOS' or campo_busqueda in df.columns:
+                # Aplicar búsqueda
+                filtered = search_data(df, search_term, campo_busqueda)
+                
+                # Si hay resultados, añadir columna con nombre de la hoja
+                if not filtered.empty:
+                    filtered['HOJA_ORIGEN'] = sheet_name
+                    all_results = pd.concat([all_results, filtered], ignore_index=True)
+                    total_results += len(filtered)
+        
+        # Mostrar resultados de búsqueda
+        st.markdown(f"""
+            <div class="search-results">
+                <h4>Resultados <span class="results-badge">{total_results}</span> expedientes encontrados en todas las hojas</h4>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Mostrar los expedientes filtrados
+        if not all_results.empty:
+            for _, row in all_results.iterrows():
+                with st.expander(f"📂 {row['EXPEDIENTE']} - Hoja: {row['HOJA_ORIGEN']}"):
+                    # Mosaicos regulares (3 columnas)
+                    st.markdown("""
+                        <div class="mosaic-container">
+                            <div class="mosaic-item">📅 <b>Fecha de Reparto</b><br>{}</div>
+                            <div class="mosaic-item">🔄 <b>Reasignado</b><br>{}</div>
+                            <div class="mosaic-item">🔖 <b>Tema</b><br>{}</div>
+                            <div class="mosaic-item">👤 <b>Solicitante</b><br>{}</div>
+                            <div class="mosaic-item">🔍 <b>Seguimiento</b><br>{}</div>
+                            <div class="mosaic-item">📜 <b>Asunto</b><br>{}</div>
+                            <div class="trazabilidad-mosaic">{}</div>
+                        </div>
+                    """.format(
+                        format_date(row.get('FECHA DE REPARTO', 'No disponible')),
+                        row.get('EXPEDIENTES RE ASIGNADOS', 'No disponible'),
+                        row.get('TEMA', 'No disponible'),
+                        row.get('SOLICITANTE', 'No disponible'),
+                        row.get('SEGUIMIENTO', 'No disponible'),
+                        row.get('ASUNTO', 'No disponible'),
+                        render_trazabilidad(row.get('TRAZABILIDAD', 'No disponible'))
+                    ), unsafe_allow_html=True)
+        else:
+            st.info("No se encontraron resultados para la búsqueda en ninguna hoja.")
+    
+    # Línea divisoria
+    st.markdown("---")
+    
+    # Explorar todas las hojas (como estaba originalmente)
+    st.subheader("Explorar por hojas")
+    
     if 'expanded_sheet' not in st.session_state:
         st.session_state.expanded_sheet = None
     
@@ -281,7 +457,7 @@ try:
             
             df.columns = df.columns.str.strip()
             
-# Mostrar fechas en formato completo dd/mm/yyyy
+            # Mostrar fechas en formato completo dd/mm/yyyy
             if 'Trazabilidad' in df.columns:
                 # Asegurarnos de que los saltos de línea se preserven correctamente
                 df['Trazabilidad'] = df['Trazabilidad'].astype(str).str.replace(r'\\n', '\n', regex=True)
