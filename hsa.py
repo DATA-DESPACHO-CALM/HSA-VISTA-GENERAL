@@ -336,7 +336,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Cargar el archivo Excel
-file_path = 'PRUEBA HSA 26.xlsx'
+file_path = r'C:\Users\gerardo.forero\Desktop\HSA-VISTA-GENERAL\HSA VISTA GENERAL H.M ALVARO ECHEVERRY.xlsx'
 try:
     sheet_names = get_sheet_names(file_path)
     
